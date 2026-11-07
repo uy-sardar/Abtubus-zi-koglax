@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="ug" dir="rtl" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ئاپتوبۇس يولۇچى ساناش سىستېمىسى (YOLOv8 + OpenCV + SQLite)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: "UKIJ Tuz Tom", "Noto Sans Arabic", system-ui, sans-serif;
+      background-color: #020617;
+      color: #f1f5f9;
+    }
+    .font-mono {
+      font-family: "JetBrains Mono", monospace;
+      font-variant-numeric: tabular-nums;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-6">
+  <div class="max-w-7xl mx-auto flex flex-col gap-6">
+    <!-- Top Header -->
+    <header class="flex flex-wrap items-center justify-between gap-4 bg-slate-900 border border-slate-800 rounded-xl px-6 py-4">
+      <div>
+        <h1 class="text-xl md:text-2xl font-bold text-slate-100">
+          سۈنئىي ئەقىل ئاپتوبۇس يولۇچى ساناش ۋە ئىز قوغلاش سىستېمىسى
+        </h1>
+        <p class="text-xs text-slate-400 mt-0.5">
+          YOLOv8 + OpenCV قوش سىزىقلىق (Y_A / Y_B) ھېسابلاش، %90 سىغىمچانلىق ئاگاھلاندۇرۇشى ۋە سائەتلىك ئاۋات ۋاقىت تەھلىلى
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="downloadPythonFile()" class="px-4 py-2 text-xs font-semibold bg-sky-400 hover:bg-sky-300 text-slate-950 rounded-lg cursor-pointer">
+          Python كودنى چۈشۈرۈش (.py)
+        </button>
+      </div>
+    </header>
+
+    <!-- 90% Capacity Red Pulse Alert Banner -->
+    <div id="capacityAlertBanner" class="hidden animate-pulse bg-red-950/90 border border-red-500 ring-2 ring-red-500/40 rounded-xl px-5 py-4 items-center justify-between gap-4 text-red-100">
+      <div>
+        <h2 class="text-sm md:text-base font-bold text-red-200">
+          ⚠️ جىددىي سىغىمچانلىق ئاگاھلاندۇرۇشى: ئاپتوبۇس سىغىمچانلىقى %90 دىن ئاشتى!
+        </h2>
+        <p id="capacityAlertText" class="text-xs text-red-300 mt-0.5"></p>
+      </div>
+      <button onclick="increaseCapacity()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-500 hover:bg-red-400 text-slate-950 cursor-pointer">
+        سىغىمچانلىق چەكنى يۇقىرىلىتىش (+5)
+      </button>
+    </div>
+
+    <!-- 4 KPI Cards -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+        <div class="flex justify-between text-xs text-slate-400">
+          <span>كىرگەن يولۇچىلار (A → B)</span>
+          <span class="font-mono text-emerald-400">in_count</span>
+        </div>
+        <div id="kpiIn" class="text-2xl font-bold font-mono text-emerald-400 mt-1" dir="ltr">0</div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+        <div class="flex justify-between text-xs text-slate-400">
+          <span>چىققان يولۇچىلار (B → A)</span>
+          <span class="font-mono text-amber-400">out_count</span>
+        </div>
+        <div id="kpiOut" class="text-2xl font-bold font-mono text-amber-400 mt-1" dir="ltr">0</div>
+      </div>
+
+      <div id="kpiInsideCard" class="bg-slate-900 border border-slate-800 rounded-xl p-4 transition-colors">
+        <div class="flex justify-between text-xs text-slate-400">
+          <span>ئاپتوبۇس ئىچىدىكى يولۇچى</span>
+          <span id="kpiCapPercent" class="font-mono text-sky-400" dir="ltr">0%</span>
+        </div>
+        <div id="kpiInside" class="text-2xl font-bold font-mono text-sky-400 mt-1" dir="ltr">0 / 5</div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+        <div class="flex justify-between text-xs text-slate-400">
+          <span>مۆلچەرلەنگەن بېلەت كىرىمى</span>
+          <span class="font-mono text-yellow-400" dir="ltr">× 2.00</span>
+        </div>
+        <div id="kpiRevenue" class="text-2xl font-bold font-mono text-yellow-300 mt-1" dir="ltr">0.00 سوم</div>
+      </div>
+    </section>
+
+    <!-- Main 2-Column Section: Simulator + Python Code -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <!-- Simulator Column -->
+      <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-4">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+          <h2 class="text-base font-bold">OpenCV + YOLOv8 قوش سىزىقلىق تەقلىدلىگۈچ</h2>
+          <div class="flex items-center gap-2">
+            <button onclick="spawnPassenger('boarding')" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 cursor-pointer">
+              + كىرىش (A → B)
+            </button>
+            <button onclick="spawnPassenger('alighting')" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 cursor-pointer">
+              - چىقىش (B → A)
+            </button>
+            <button onclick="resetCounters()" class="px-3 py-1.5 text-xs rounded-lg bg-slate-800 border border-slate-700 text-slate-300 cursor-pointer">
+              نۆللەش
+            </button>
+          </div>
+        </div>
+
+        <div id="canvasWrapper" class="rounded-lg border border-slate-800 bg-slate-950 overflow-hidden flex justify-center">
+          <canvas id="simCanvas" width="640" height="420" dir="ltr" class="w-full max-w-[640px] h-auto block"></canvas>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-slate-800 text-xs">
+          <div>
+            <div class="flex justify-between text-amber-400 mb-1">
+              <span>A سىزىق (Y_A)</span>
+              <span id="labelYA" class="font-mono" dir="ltr">145px</span>
+            </div>
+            <input id="sliderYA" type="range" min="80" max="220" value="145" class="w-full accent-amber-500" oninput="updateLines()" />
+          </div>
+          <div>
+            <div class="flex justify-between text-emerald-400 mb-1">
+              <span>B سىزىق (Y_B)</span>
+              <span id="labelYB" class="font-mono" dir="ltr">295px</span>
+            </div>
+            <input id="sliderYB" type="range" min="240" max="370" value="295" class="w-full accent-emerald-500" oninput="updateLines()" />
+          </div>
+          <div>
+            <div class="flex justify-between text-red-400 mb-1">
+              <span>ئەڭ چوڭ سىغىمچانلىقى</span>
+              <span id="labelCap" class="font-mono" dir="ltr">5</span>
+            </div>
+            <input id="sliderCap" type="range" min="2" max="40" value="5" class="w-full accent-red-500" oninput="updateLines()" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Python Code Column -->
+      <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-4">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <h2 class="text-base font-bold">تولۇق قوللىنىشچان Python كودى (bus_counter_pro.py)</h2>
+          <button onclick="copyPythonCode()" id="copyBtn" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-sky-500 text-slate-950 cursor-pointer">
+            كودنى كۆچۈرۈش
+          </button>
+        </div>
+        <pre id="pythonCodeBlock" dir="ltr" class="p-4 rounded-lg bg-slate-950 border border-slate-800 text-xs font-mono text-slate-200 overflow-x-auto max-h-[420px] overflow-y-auto"><code>#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+===============================================================================
+ئەمەلىي قوللىنىشچان ئاپتوبۇس يولۇچى ساناش ۋە ئىز قوغلاش سىستېمىسى (YOLOv8 + OpenCV + SQLite)
+===============================================================================
+قاچىلاش بۇيرۇقى:
+    pip install ultralytics opencv-python
+
+ئىجرا قىلىش ئۇسۇلى:
+    1) سىن ھۆججىتى بىلەن:  python bus_counter_pro.py --source "bus_door_cam.mp4"
+    2) نەق مەيدان كامېرا:  python bus_counter_pro.py --source 0
+===============================================================================
+"""
+
+# ==============================================================================
+# 1-بۇيرۇق: مۇھىت تەڭشەش ۋە ئاساس كۈتۈپخانىلارنى سەپلەش
+# ==============================================================================
+import argparse
+import sqlite3
+from datetime import datetime
+import cv2
+from ultralytics import YOLO
+
+
+# ==============================================================================
+# 5-بۇيرۇق (ساندان قىسمى): SQLite ساندان باشقۇرغۇچىسى
+# ==============================================================================
+class PassengerDatabase:
+    def __init__(self, db_path: str, ticket_fare: float):
+        self.db_path = db_path
+        self.ticket_fare = ticket_fare
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self.cursor = self.conn.cursor()
+        self._create_table()
+
+    def _create_table(self) -&gt; None:
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS passenger_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                track_id INTEGER NOT NULL,
+                direction TEXT NOT NULL,
+                line_sequence TEXT NOT NULL,
+                x_center INTEGER NOT NULL,
+                y_center INTEGER NOT NULL,
+                fare REAL NOT NULL,
+                timestamp TEXT NOT NULL
+            )
+        """)
+        self.conn.commit()
+
+    def insert_event(self, track_id: int, direction: str, x_c: int, y_c: int) -&gt; None:
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        seq = "A -&gt; B" if direction == "IN" else "B -&gt; A"
+        fare_val = self.ticket_fare if direction == "IN" else 0.0
+        self.cursor.execute(
+            """
+            INSERT INTO passenger_logs
+            (track_id, direction, line_sequence, x_center, y_center, fare, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (int(track_id), direction, seq, int(x_c), int(y_c), fare_val, now_str),
+        )
+        self.conn.commit()
+        print(f"[{now_str}] SANAQ: ID=#{track_id} | {direction} ({seq}) | Kordinat=({x_c},{y_c}) | Kirim={fare_val:.2f}")
+
+    def print_summary(self) -&gt; None:
+        self.cursor.execute("SELECT COUNT(*), COALESCE(SUM(fare), 0) FROM passenger_logs WHERE direction='IN'")
+        total_in, total_rev = self.cursor.fetchone()
+        self.cursor.execute("SELECT COUNT(*) FROM passenger_logs WHERE direction='OUT'")
+        (total_out,) = self.cursor.fetchone()
+        print("\n" + "=" * 60)
+        print("SQLite ساندان جەمئىي ستاتىستىكا دوكلاتى:")
+        print(f"  - جەمئىي كىرگەنلەر (IN) : {total_in} ئادەم")
+        print(f"  - جەمئىي چىققانلار (OUT): {total_out} ئادەم")
+        print(f"  - جەمئىي بېلەت كىرىمى  : {total_rev:.2f} سوم")
+        print("=" * 60)
+
+    def close(self) -&gt; None:
+        self.conn.close()
+
+
+# ==============================================================================
+# ئاساسىي قوللىنىشچان پروگرامما (2-، 3-، 4- ۋە 5-بۇيرۇقلار)
+# ==============================================================================
+def run_bus_counter(
+    source: str = "bus_door_cam.mp4",
+    model_weights: str = "yolov8n.pt",
+    db_file: str = "bus_passengers.db",
+    y_a: int = 145,
+    y_b: int = 295,
+    offset: int = 18,
+    conf_thresh: float = 0.45,
+    ticket_fare: float = 2.00,
+    max_capacity: int = 5,
+    save_output: str = "bus_counted_output.mp4",
+) -&gt; None:
+    # 2-بۇيرۇق: YOLO مودېلىنى يۈكلەش ۋە سىن مەنبەسىنى تۇتاشتۇرۇش
+    print(f"[1/3] YOLOv8 مودېلى يۈكلىنىۋاتىدۇ: {model_weights} ...")
+    model = YOLO(model_weights)
+
+    video_src = 0 if str(source).strip() == "0" else source
+    cap = cv2.VideoCapture(video_src)
+    if not cap.isOpened():
+        raise RuntimeError(f"خاتالىق: سىن مەنبەسىنى ئوقۇغىلى بولمىدى -&gt; {source}")
+
+    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = int(cap.get(cv2.CAP_PROP_FPS)) or 30
+    print(f"[2/3] سىن ئۇلاندى! ئۆلچىمى: {frame_width}x{frame_height} @ {fps} FPS")
+
+    # ئەگەر بېكىتىلگەن سىزىق سىن ئېگىزلىكىدىن ئېشىپ كەتسە، نىسبەت بويىچە ئاپتوماتىك تەڭشەش
+    if y_b &gt;= frame_height or y_a &gt;= frame_height:
+        y_a = int(frame_height * 0.35)
+        y_b = int(frame_height * 0.68)
+        print(f"[ئەسكەرتىش] قوش سىزىق سىن ئېگىزلىكىگە ماسلاشتۇرۇلدى: Y_A={y_a}, Y_B={y_b}")
+
+    # نەتىجە سىننى ساقلاش ئۈسكۈنىسى (VideoWriter)
+    writer = None
+    if save_output:
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(save_output, fourcc, fps, (frame_width, frame_height))
+
+    # SQLite سانداننى قوزغىتىش
+    db = PassengerDatabase(db_file, ticket_fare)
+
+    # 4-بۇيرۇق: قوش سىزىقلىق ھېسابلاش لۇغىتى ۋە سانالغانلار تىزىملىكى
+    first_line_dict: dict[int, str] = {}   # {track_id: 'A' ياكى 'B'}
+    counted_ids: set[int] = set()          # تەكرار ساناشنىڭ ئالدىنى ئېلىش توپلىمى
+    in_count: int = 0
+    out_count: int = 0
+
+    print("[3/3] يولۇچى ساناش باشلاندى (چېكىنىش ئۈچۈن 'q' كۇنۇپكىسىنى بېسىڭ)...")
+
+    while cap.isOpened():
+        success, frame = cap.read()
+        if not success:
+            print("سىن ئاخىرلاشتى.")
+            break
+
+        # 3-بۇيرۇق: ئىز قوغلاش (Tracking) - پەقەت ئادەم (classes=[0])
+        results = model.track(
+            frame,
+            persist=True,
+            classes=[0],
+            conf=conf_thresh,
+            tracker="bytetrack.yaml",
+            verbose=False,
+        )
+
+        # A سىزىق (تاشقى چېگرا) ۋە سەزگۈرلۈك رايونىنى سىزىش
+        cv2.line(frame, (0, y_a), (frame_width, y_a), (0, 180, 255), 2)
+        cv2.putText(
+            frame,
+            f"Line A (Outer) Y={y_a}",
+            (16, max(20, y_a - 10)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (0, 180, 255),
+            2,
+        )
+
+        # B سىزىق (ئىچكى چېگرا) ۋە سەزگۈرلۈك رايونىنى سىزىش
+        cv2.line(frame, (0, y_b), (frame_width, y_b), (120, 220, 0), 2)
+        cv2.putText(
+            frame,
+            f"Line B (Inner) Y={y_b}",
+            (16, max(20, y_b - 10)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (120, 220, 0),
+            2,
+        )
+
+        # بايقالغان ئادەملەرنى بىر تەرەپ قىلىش
+        if results[0].boxes is not None and results[0].boxes.id is not None:
+            boxes = results[0].boxes.xyxy.cpu().numpy().astype(int)
+            track_ids = results[0].boxes.id.cpu().numpy().astype(int)
+
+            for box, track_id in zip(boxes, track_ids):
+                x1, y1, x2, y2 = box
+                x_center = int((x1 + x2) / 2)
+                y_center = int((y1 + y2) / 2)
+
+                # 4-بۇيرۇق: قوش سىزىقلىق ھېسابلاش لوگىكىسى
+                if track_id not in counted_ids:
+                    # A سىزىق سەزگۈرلۈك دائىرىسىگە كىردىمۇ؟
+                    if (y_a - offset) &lt;= y_center &lt;= (y_a + offset):
+                        if track_id not in first_line_dict:
+                            first_line_dict[track_id] = "A"
+                        elif first_line_dict[track_id] == "B":
+                            # B -&gt; A تەرتىپى تاماملاندى: چىقتى (OUT)
+                            out_count += 1
+                            counted_ids.add(track_id)
+                            db.insert_event(track_id, "OUT", x_center, y_center)
+
+                    # B سىزىق سەزگۈرلۈك دائىرىسىگە كىردىمۇ؟
+                    elif (y_b - offset) &lt;= y_center &lt;= (y_b + offset):
+                        if track_id not in first_line_dict:
+                            first_line_dict[track_id] = "B"
+                        elif first_line_dict[track_id] == "A":
+                            # A -&gt; B تەرتىپى تاماملاندى: كىردى (IN)
+                            in_count += 1
+                            counted_ids.add(track_id)
+                            db.insert_event(track_id, "IN", x_center, y_center)
+
+                # ئادەم رامكىسى، مەركىزىي نۇقتىسى ۋە track_id بەلگىسىنى سىزىش
+                is_counted = track_id in counted_ids
+                color = (80, 220, 100) if is_counted else (255, 190, 40)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                cv2.circle(frame, (x_center, y_center), 5, (0, 0, 255), -1)
+
+                first_step = first_line_dict.get(track_id, "-")
+                status_str = "COUNTED" if is_counted else f"First:{first_step}"
+                cv2.putText(
+                    frame,
+                    f"ID:{track_id} [{status_str}]",
+                    (x1, max(22, y1 - 8)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.52,
+                    color,
+                    2,
+                )
+
+        # 5-بۇيرۇق: ئېكرانغا ئادەم سانى، سىغىمچانلىق ئاگاھلاندۇرۇشى ۋە كىرىم مۆلچەرىنى چىقىرىش
+        inside_bus = max(0, in_count - out_count)
+        estimated_revenue = in_count * ticket_fare
+
+        # يېرىم سۈزۈك ستاتىستىكا تاختىسى
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (14, 14), (370, 180), (15, 23, 42), -1)
+        cv2.addWeighted(overlay, 0.82, frame, 0.18, 0, frame)
+
+        cv2.putText(frame, f"IN  (A-&gt;B) : {in_count}", (28, 46),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.72, (52, 211, 153), 2)
+        cv2.putText(frame, f"OUT (B-&gt;A) : {out_count}", (28, 78),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.72, (56, 160, 255), 2)
+        cv2.putText(frame, f"INSIDE BUS : {inside_bus}/{max_capacity}", (28, 110),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.72, (255, 210, 80), 2)
+        cv2.putText(frame, f"REVENUE    : {estimated_revenue:.2f}", (28, 142),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.72, (80, 230, 255), 2)
+
+        if inside_bus &gt;= 0.9 * max_capacity:
+            cv2.putText(frame, "ALERT: 90% CAPACITY REACHED!", (28, 170),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 255), 2)
+
+        if writer is not None:
+            writer.write(frame)
+
+        cv2.imshow("AI Bus Passenger Counter (YOLOv8 + SQLite)", frame)
+        if cv2.waitKey(1) &amp; 0xFF == ord("q"):
+            break
+
+    cap.release()
+    if writer is not None:
+        writer.release()
+    cv2.destroyAllWindows()
+    db.print_summary()
+    db.close()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="YOLOv8 Bus Passenger Counter")
+    parser.add_argument("--source", type=str, default="bus_door_cam.mp4", help="Video path or camera index (0)")
+    parser.add_argument("--model", type=str, default="yolov8n.pt", help="YOLOv8 model weights")
+    parser.add_argument("--db", type=str, default="bus_passengers.db", help="SQLite database file")
+    parser.add_argument("--ya", type=int, default=145, help="Outer Line A Y-coordinate")
+    parser.add_argument("--yb", type=int, default=295, help="Inner Line B Y-coordinate")
+    parser.add_argument("--offset", type=int, default=18, help="Line crossing sensitivity offset")
+    parser.add_argument("--fare", type=float, default=2.00, help="Ticket price per passenger")
+    args = parser.parse_args()
+
+    run_bus_counter(
+        source=args.source,
+        model_weights=args.model,
+        db_file=args.db,
+        y_a=args.ya,
+        y_b=args.yb,
+        offset=args.offset,
+        ticket_fare=args.fare,
+    )</code></pre>
+      </div>
+    </section>
+
+    <!-- SQLite Log Table -->
+    <section class="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-3">
+      <h3 class="text-base font-bold">5-بۇيرۇق: SQLite ساندان خاتىرىسى (passenger_logs)</h3>
+      <div class="rounded-lg border border-slate-800 bg-slate-950 overflow-hidden max-h-[240px] overflow-y-auto">
+        <table class="w-full text-xs text-left font-mono" dir="ltr">
+          <thead class="bg-slate-900 text-slate-400 border-b border-slate-800">
+            <tr>
+              <th class="py-2 px-3">id</th>
+              <th class="py-2 px-3">track_id</th>
+              <th class="py-2 px-3">direction</th>
+              <th class="py-2 px-3">sequence</th>
+              <th class="py-2 px-3">fare</th>
+              <th class="py-2 px-3">timestamp</th>
+            </tr>
+          </thead>
+          <tbody id="logTableBody" class="divide-y divide-slate-800/70"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    let lineYA = 145;
+    let lineYB = 295;
+    let lineOffset = 18;
+    let maxCapacity = 5;
+    let ticketFare = 2;
+
+    let inCount = 0;
+    let outCount = 0;
+    let nextTrackId = 101;
+    let nextLogId = 1;
+    let firstLineDict = {};
+    let countedIds = new Set();
+    let agents = [];
+
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function updateLines() {
+      lineYA = Number(document.getElementById('sliderYA').value);
+      lineYB = Number(document.getElementById('sliderYB').value);
+      maxCapacity = Number(document.getElementById('sliderCap').value);
+      document.getElementById('labelYA').textContent = lineYA + 'px';
+      document.getElementById('labelYB').textContent = lineYB + 'px';
+      document.getElementById('labelCap').textContent = maxCapacity;
+      updateKPIs();
+    }
+
+    function increaseCapacity() {
+      maxCapacity += 5;
+      document.getElementById('sliderCap').value = maxCapacity;
+      document.getElementById('labelCap').textContent = maxCapacity;
+      updateKPIs();
+    }
+
+    function spawnPassenger(intent) {
+      const id = nextTrackId++;
+      const isBoarding = intent === 'boarding';
+      agents.push({
+        track_id: id,
+        x: 320 + (Math.random() - 0.5) * 160,
+        y: isBoarding ? 30 : 390,
+        vy: isBoarding ? 1.8 : -1.8,
+        w: 54,
+        h: 70
+      });
+    }
+
+    function recordEvent(tid, direction, seq) {
+      if (direction === 'IN') inCount++;
+      else outCount++;
+      const fare = direction === 'IN' ? ticketFare : 0;
+      const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+      const tbody = document.getElementById('logTableBody');
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="py-2 px-3 text-slate-500">${nextLogId++}</td>
+        <td class="py-2 px-3 text-sky-400 font-semibold">#${tid}</td>
+        <td class="py-2 px-3 ${direction === 'IN' ? 'text-emerald-400' : 'text-amber-400'} font-semibold">${direction}</td>
+        <td class="py-2 px-3 text-slate-300">${seq}</td>
+        <td class="py-2 px-3 text-yellow-300">${fare.toFixed(2)}</td>
+        <td class="py-2 px-3 text-slate-400">${now}</td>
+      `;
+      tbody.prepend(tr);
+      updateKPIs();
+    }
+
+    function updateKPIs() {
+      const inside = Math.max(0, inCount - outCount);
+      const revenue = (inCount * ticketFare).toFixed(2);
+      const ratio = maxCapacity > 0 ? inside / maxCapacity : 0;
+      const isAlert = maxCapacity > 0 && inside >= maxCapacity * 0.9;
+
+      document.getElementById('kpiIn').textContent = inCount;
+      document.getElementById('kpiOut').textContent = outCount;
+      document.getElementById('kpiInside').textContent = inside + ' / ' + maxCapacity;
+      document.getElementById('kpiCapPercent').textContent = Math.round(ratio * 100) + '%';
+      document.getElementById('kpiRevenue').textContent = revenue + ' سوم';
+
+      const banner = document.getElementById('capacityAlertBanner');
+      const card = document.getElementById('kpiInsideCard');
+      if (isAlert) {
+        banner.classList.remove('hidden');
+        banner.classList.add('flex');
+        document.getElementById('capacityAlertText').textContent =
+          'نۆۋەتتە ئاپتوبۇس ئىچىدە ' + inside + ' نەپەر يولۇچى بار (ئەڭ چوڭ سىغىمچانلىقى: ' + maxCapacity + ').';
+        card.className = 'animate-pulse bg-red-950/80 border border-red-500 rounded-xl p-4';
+      } else {
+        banner.classList.add('hidden');
+        banner.classList.remove('flex');
+        card.className = 'bg-slate-900 border border-slate-800 rounded-xl p-4';
+      }
+    }
+
+    function resetCounters() {
+      inCount = 0;
+      outCount = 0;
+      firstLineDict = {};
+      countedIds.clear();
+      agents = [];
+      document.getElementById('logTableBody').innerHTML = '';
+      updateKPIs();
+    }
+
+    function copyPythonCode() {
+      const code = document.getElementById('pythonCodeBlock').innerText;
+      navigator.clipboard.writeText(code);
+      const btn = document.getElementById('copyBtn');
+      btn.textContent = 'كۆچۈرۈلدى!';
+      setTimeout(() => (btn.textContent = 'كودنى كۆچۈرۈش'), 1500);
+    }
+
+    function downloadPythonFile() {
+      const code = document.getElementById('pythonCodeBlock').innerText;
+      const blob = new Blob([code], { type: 'text/x-python;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'bus_counter_pro.py';
+      a.click();
+    }
+
+    setInterval(() => {
+      if (agents.length < 3) {
+        spawnPassenger(Math.random() < 0.65 ? 'boarding' : 'alighting');
+      }
+    }, 2500);
+    spawnPassenger('boarding');
+
+    function animate() {
+      ctx.fillStyle = '#090d16';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Line A
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, lineYA);
+      ctx.lineTo(canvas.width, lineYA);
+      ctx.stroke();
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = '12px JetBrains Mono';
+      ctx.fillText('Line A (Outer) Y_A=' + lineYA, 14, lineYA - 8);
+
+      // Line B
+      ctx.strokeStyle = '#10b981';
+      ctx.beginPath();
+      ctx.moveTo(0, lineYB);
+      ctx.lineTo(canvas.width, lineYB);
+      ctx.stroke();
+      ctx.fillStyle = '#34d399';
+      ctx.fillText('Line B (Inner) Y_B=' + lineYB, 14, lineYB - 8);
+
+      const nextAgents = [];
+      for (const ag of agents) {
+        ag.y += ag.vy;
+        const xc = Math.round(ag.x);
+        const yc = Math.round(ag.y);
+        const tid = ag.track_id;
+
+        if (!countedIds.has(tid)) {
+          if (Math.abs(yc - lineYA) <= lineOffset) {
+            if (!firstLineDict[tid]) firstLineDict[tid] = 'A';
+            else if (firstLineDict[tid] === 'B') {
+              countedIds.add(tid);
+              recordEvent(tid, 'OUT', 'B -> A');
+            }
+          } else if (Math.abs(yc - lineYB) <= lineOffset) {
+            if (!firstLineDict[tid]) firstLineDict[tid] = 'B';
+            else if (firstLineDict[tid] === 'A') {
+              countedIds.add(tid);
+              recordEvent(tid, 'IN', 'A -> B');
+            }
+          }
+        }
+
+        ctx.strokeStyle = countedIds.has(tid) ? '#10b981' : '#38bdf8';
+        ctx.strokeRect(xc - ag.w / 2, yc - ag.h / 2, ag.w, ag.h);
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.arc(xc, yc, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillText('ID:' + tid + ' [' + (firstLineDict[tid] || '-') + ']', xc - 26, yc - ag.h / 2 - 6);
+
+        if (yc > -30 && yc < canvas.height + 30) nextAgents.push(ag);
+      }
+      agents = nextAgents;
+      requestAnimationFrame(animate);
+    }
+    animate();
+  </script>
+</body>
+</html>
